@@ -203,7 +203,17 @@ async function roam_login(browser) {
             const login_error_selector = 'div[style="font-size: 12px; color: red;"]' // error message on login page
             const graphs_selector = '.my-graphs' // successful login, on graphs selection page
 
-            await page.waitForSelector(login_error_selector + ', ' + graphs_selector)
+            // As of 2026 a successful login no longer necessarily lands on .my-graphs,
+            // so also treat the sign-in form disappearing as success.
+            try {
+                await page.waitForFunction((error_sel, graphs_sel) =>
+                    document.querySelector(error_sel) || document.querySelector(graphs_sel) || !document.querySelector('input[name="password"]'),
+                    { timeout: 90000 }, login_error_selector, graphs_selector)
+            } catch (err) {
+                const text = await page.evaluate(() => document.body.innerText.slice(0, 500))
+                log('- Stuck after "Sign In". URL:', page.url(), 'Page text:', JSON.stringify(text))
+                throw err
+            }
 
             const error_el = await page.$(login_error_selector)
 
@@ -212,13 +222,11 @@ async function roam_login(browser) {
                 const error_message = await page.evaluate(el => el.innerText, error_el)
                 reject(`Login error. Roam says: "${error_message}"`)
 
-            } else if (await page.$(graphs_selector)) {
+            } else {
 
-                log('Login successful!')
+                log('Login successful!', page.url())
                 resolve()
 
-            } else {
-                reject('Login error: unknown')
             }
 
         } catch (err) { reject(err) }
@@ -235,14 +243,24 @@ async function roam_open_graph(page, graph_name) {
             await page.goto(`https://roamresearch.com/#/app/${graph_name}?disablecss=true&disablejs=true`)
 
             // log('- Checking for astrolabe spinner')
-            await page.waitForSelector('.loading-astrolabe')
-            log('- astrolabe spinning...')
+            try {
+                await page.waitForSelector('.loading-astrolabe', { timeout: 30000 })
+                log('- astrolabe spinning...')
 
-            await page.waitForSelector('.loading-astrolabe', { hidden: true })
-            log('- astrolabe spinning stopped')
+                await page.waitForSelector('.loading-astrolabe', { hidden: true })
+                log('- astrolabe spinning stopped')
+            } catch (err) {
+                log('- (No astrolabe spinner; continuing)')
+            }
 
             // try {
-            await page.waitForSelector('.roam-app') // add short timeout here, if fails, don't exit code 1, and instead CHECK if have permission to view graph
+            try {
+                await page.waitForSelector('.roam-app', { timeout: 180000 }) // add short timeout here, if fails, don't exit code 1, and instead CHECK if have permission to view graph
+            } catch (err) {
+                const text = await page.evaluate(() => document.body.innerText.slice(0, 500))
+                log('- Graph did not load. URL:', page.url(), 'Page text:', JSON.stringify(text))
+                throw err
+            }
             // } catch (err) {
             //     await page.waitForSelector('.navbar') // Likely screen saying 'You do not have permission to view this database'
             //     reject()
