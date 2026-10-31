@@ -179,9 +179,14 @@ async function roam_login(browser) {
             // log('- (Wait 10 seconds for auto-refresh)')
             // await page.waitForTimeout(10000) // because Roam auto refreshes the sign-in page, as mentioned here https://github.com/MatthieuBizien/roam-to-git/issues/87#issuecomment-763281895 (and can be seen in non-headless browser)
 
-            await page.waitForSelector('.loading-astrolabe', { timeout: 20000 })
-            await page.waitForSelector('.loading-astrolabe', { hidden: true })
-            // log('- auto-refreshed')
+            // As of 2026 the sign-in page no longer auto-refreshes, so the spinner may never appear.
+            try {
+                await page.waitForSelector('.loading-astrolabe', { timeout: 10000 })
+                await page.waitForSelector('.loading-astrolabe', { hidden: true })
+                // log('- auto-refreshed')
+            } catch (err) {
+                log('- (No auto-refresh; continuing)')
+            }
 
             log('- Filling email field')
             await page.type('input[name="email"]', R2G_EMAIL)
